@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useEffect } from 'react';
 import {
   useSummarizeTextMutation,
   useSummarizeUrlMutation,
@@ -32,6 +33,25 @@ export const useSummarization = (): SummarizationHookReturn => {
   const [summarizeText, textStatus] = useSummarizeTextMutation();
   const [summarizeUrl, urlStatus] = useSummarizeUrlMutation();
   const [summarizePdf, pdfStatus] = useSummarizePdfMutation();
+
+  useEffect(() => {
+    // reset RTK Query
+    textStatus.reset();
+    urlStatus.reset();
+    pdfStatus.reset();
+
+    // reset input
+    if (tab === 0) {
+      setUrl('');
+      setFile(null);
+    } else if (tab === 1) {
+      setText('');
+      setFile(null);
+    } else if (tab === 2) {
+      setText('');
+      setUrl('');
+    }
+  }, [tab]);
 
   const isLoading = textStatus.isLoading || urlStatus.isLoading || pdfStatus.isLoading;
   const error = textStatus.error || urlStatus.error || pdfStatus.error;
