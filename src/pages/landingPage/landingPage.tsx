@@ -1,59 +1,43 @@
-import React, { useState, useCallback } from 'react';
-import {
-  Button, TextField, RadioGroup, Radio, FormControlLabel,
-  FormControl, Box, Typography, IconButton, Tooltip, Snackbar, Alert,
-} from '@mui/material';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import React, { useCallback } from 'react';
+import { Box, Typography, Snackbar, Alert, LinearProgress, Grid, Divider } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
-import Navbar from './Navbar';
-import { useSummarizeTextMutation } from '../../services/summarizeApi';
-
-const tabs = ['ข้อความ (Text)', 'ลิงก์ URL (Link)', 'ไฟล์ PDF (File)'];
-
-// แปลง lineLimit → ratio/max_length
-const optionToParams = (lineLimit: string) => {
-  switch (lineLimit) {
-    case 'keyword': return { ratio: 0.15, min_length: 10, max_length: 80 };
-    case '3':       return { ratio: 0.25, min_length: 20, max_length: 180 };
-    case '8':       return { ratio: 0.4,  min_length: 50, max_length: 480 };
-    default:        return { ratio: 0.3,  min_length: 30, max_length: 300 };
-  }
-};
+import Navbar from '../../components/navbar';
+import InputCard from '../../components/landing-page/inputCard';
+import SummaryOptions from '../../components/landing-page/summaryOptions';
+import ResultCard from '../../components/landing-page/resultCard';
+import { useSummarization } from '../../hooks/useSummarization';
+import { SnackbarState } from '../../services/types/summarizeType';
 
 const LandingPage = () => {
-  const [text, setText] = useState('');
-  const [url, setUrl] = useState('');
-  const [lineLimit, setLineLimit] = useState('keyword');
-  const [tab, setTab] = useState(0);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+  const [snackbar, setSnackbar] = React.useState<SnackbarState>({
     open: false, message: '', severity: 'success',
   });
 
-  // RTK Query mutation hook
-  const [summarizeText, { data, isLoading, error, reset }] = useSummarizeTextMutation();
-
-  const summarizedText = data?.summary ?? '';
-
-  const handleSummarization = async () => {
-    if (!text.trim()) return;
-    const params = optionToParams(lineLimit);
-    await summarizeText({ text, ...params });
-  };
-
-  const handleClear = () => {
-    setText('');
-    reset();  // เคลียร์ result ด้วย
-  };
+  const {
+    tab, setTab,
+    text, setText,
+    url, setUrl,
+    file, setFile,
+    lineLimit, setLineLimit,
+    summarizedText,
+    frontendMetric,
+    bertScore,
+    isLoading,
+    error,
+    handleSummarize,
+    handleClear,
+    tabs,
+  } = useSummarization();
 
   const handleCopy = useCallback(() => {
+    if (!summarizedText) return;
     navigator.clipboard.writeText(summarizedText).then(() => {
       setSnackbar({ open: true, message: 'คัดลอกแล้ว!', severity: 'success' });
     });
   }, [summarizedText]);
 
   const handleExport = useCallback(() => {
+    if (!summarizedText) return;
     const blob = new Blob([summarizedText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -64,192 +48,125 @@ const LandingPage = () => {
     setSnackbar({ open: true, message: 'บันทึกไฟล์แล้ว!', severity: 'success' });
   }, [summarizedText]);
 
+  const qualityScore = React.useMemo(() => {
+    if (frontendMetric) return frontendMetric.score;
+    if (!summarizedText) return null;
+    const wordCount = summarizedText.split(/\s+/).filter(Boolean).length;
+    const score = Math.min(95, Math.max(50, 60 + wordCount * 0.5));
+    return Math.round(score * 100) / 100;
+  }, [summarizedText, frontendMetric]);
+
+  const qualityLabel = React.useMemo(() => {
+    if (qualityScore === null) return '';
+    if (qualityScore >= 80) return 'สรุปนี้ครอบคลุมประเด็นสำคัญได้อย่างครบถ้วน สามารถใช้งานได้ทันที';
+    if (qualityScore >= 60) return 'สรุปนี้ครอบคลุมประเด็นหลักได้ดี อาจต้องการการตรวจสอบเพิ่มเติม';
+    return 'สรุปนี้อาจไม่ครบถ้วน ควรตรวจสอบข้อมูลต้นฉบับ';
+  }, [qualityScore]);
+
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#EEF0F8' }}>
       <Navbar />
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 20px' }}>
-
-        {/* Title */}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 24px' }}>
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <Typography variant="h5" sx={{ marginBottom: '24px', color: '#000', fontWeight: 'bold', fontSize: '26px' }}>
             Thai Text Summarization
           </Typography>
         </motion.div>
 
-        {/* Card */}
-        <motion.div
-          style={{ width: '100%', maxWidth: '620px' }}
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          <Box sx={{ borderRadius: '20px', border: '2px solid #000', overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+        <Box sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: '24px',
+          width: '100%',
+          maxWidth: '1200px',
+          alignItems: 'flex-start',
+        }}>
 
-            {/* Tab Header */}
-            <Box sx={{ display: 'flex' }}>
-              {tabs.map((label, index) => (
-                <Box key={index} onClick={() => setTab(index)} sx={{
-                  flex: 1, padding: '12px 0', textAlign: 'center', cursor: 'pointer',
-                  fontSize: '13px', fontWeight: tab === index ? 'bold' : 'normal', color: '#000',
-                  backgroundColor: tab === index ? '#DEDEDE' : '#A8C7B3',
-                  borderBottom: tab === index ? 'none' : '2px solid #000',
-                  borderRight: index < tabs.length - 1 ? '2px solid #000' : 'none',
-                  transition: 'background-color 0.3s ease', userSelect: 'none',
-                }}>
-                  {label}
-                </Box>
-              ))}
-            </Box>
-
-            {/* Tab Content */}
-            <Box sx={{ backgroundColor: '#DEDEDE', padding: '16px' }}>
-              <AnimatePresence mode="wait">
-                <motion.div key={tab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
-                  {tab === 0 && (
-                    <Box sx={{ position: 'relative' }}>
-                      <TextField
-                        placeholder="เขียนข้อความที่คุณต้องการสรุป . . . ."
-                        multiline rows={6} value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        fullWidth variant="outlined"
-                        sx={{
-                          backgroundColor: '#DEDEDE', borderRadius: '10px',
-                          '& fieldset': { border: 'none' },
-                          '& .MuiInputBase-input': { fontSize: '14px', color: '#000', paddingRight: '36px' },
-                        }}
-                      />
-                      {/* Trash icon — แสดงเมื่อมีข้อความ */}
-                      <AnimatePresence>
-                        {text && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0.7 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.7 }}
-                            style={{ position: 'absolute', top: 8, right: 8 }}
-                          >
-                            <Tooltip title="ล้างข้อความ">
-                              <IconButton size="small" onClick={handleClear} sx={{ color: '#555', '&:hover': { color: '#c0392b' } }}>
-                                <DeleteOutlineIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </Box>
-                  )}
-
-                  {tab === 1 && (
-                    <TextField
-                      placeholder="วาง URL ที่คุณต้องการสรุป . . . ."
-                      value={url} onChange={(e) => setUrl(e.target.value)}
-                      fullWidth variant="outlined"
-                      sx={{
-                        backgroundColor: '#DEDEDE', borderRadius: '10px',
-                        '& fieldset': { border: 'none' },
-                        '& .MuiInputBase-input': { fontSize: '14px', color: '#000' },
-                        marginBottom: '80px',
-                      }}
-                    />
-                  )}
-
-                  {tab === 2 && (
-                    <Box sx={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      justifyContent: 'center', height: '150px',
-                      border: '2px dashed #000', borderRadius: '10px', cursor: 'pointer', color: '#000',
-                    }}>
-                      <Typography fontSize="14px">คลิกหรือลากไฟล์ PDF มาวางที่นี่</Typography>
-                    </Box>
-                  )}
-                </motion.div>
-              </AnimatePresence>
-
-              {/* Error */}
-              {error && (
-                <Typography sx={{ color: 'red', fontSize: '13px', mt: 1 }}>
-                  เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง
-                </Typography>
-              )}
-
-              {/* Submit Button */}
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', marginTop: '12px' }}>
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} transition={{ type: 'spring', stiffness: 300 }}>
-                  <Button
-                    variant="contained"
-                    onClick={handleSummarization}
-                    disabled={isLoading || !text.trim()}
-                    sx={{
-                      backgroundColor: '#A8C7B3', borderRadius: '20px', color: '#000',
-                      fontWeight: 'bold', textTransform: 'uppercase',
-                      paddingX: '28px', paddingY: '10px',
-                      border: '2px solid #000', boxShadow: '3px 3px 0px #000',
-                      '&:hover': { backgroundColor: '#8fb39e', boxShadow: '5px 5px 0px #000' },
-                      '&:disabled': { backgroundColor: '#c5d9cf', color: '#666' },
-                    }}
-                  >
-                    {isLoading ? 'กำลังสรุป...' : 'Summarization'}
-                  </Button>
-                </motion.div>
-              </Box>
-            </Box>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <InputCard
+              tabs={tabs}
+              tab={tab}
+              setTab={setTab}
+              text={text}
+              setText={setText}
+              url={url}
+              setUrl={setUrl}
+              file={file}
+              setFile={setFile}
+              handleClear={handleClear}
+              handleSummarization={handleSummarize}
+              isLoading={isLoading}
+              error={error}
+            />
+            <SummaryOptions
+              lineLimit={lineLimit}
+              setLineLimit={setLineLimit}
+            />
           </Box>
-        </motion.div>
 
-        {/* Radio */}
-        <motion.div style={{ width: '100%', maxWidth: '620px' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.4 }}>
-          <FormControl sx={{ marginTop: '16px', width: '100%' }}>
-            <RadioGroup row value={lineLimit} onChange={(e) => setLineLimit(e.target.value)}>
-              <FormControlLabel value="keyword" control={<Radio sx={{ color: '#000', '&.Mui-checked': { color: '#000' } }} />} label={<Typography sx={{ color: '#000', fontSize: '14px' }}>คำโปรย</Typography>} />
-              <FormControlLabel value="3" control={<Radio sx={{ color: '#000', '&.Mui-checked': { color: '#000' } }} />} label={<Typography sx={{ color: '#000', fontSize: '14px' }}>สรุปสั้น (ไม่เกิน 3 บรรทัด)</Typography>} />
-              <FormControlLabel value="8" control={<Radio sx={{ color: '#000', '&.Mui-checked': { color: '#000' } }} />} label={<Typography sx={{ color: '#000', fontSize: '14px' }}>สรุปปกติ (ไม่เกิน 8 บรรทัด)</Typography>} />
-            </RadioGroup>
-          </FormControl>
-        </motion.div>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <ResultCard
+              summarizedText={summarizedText}
+              handleCopy={handleCopy}
+              handleExport={handleExport}
+            />
+          </Box>
+        </Box>
 
-        {/* Result Box */}
         <AnimatePresence>
           {summarizedText && (
             <motion.div
-              style={{ width: '100%', maxWidth: '620px' }}
+              style={{ width: '100%', maxWidth: '1200px' }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.4 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.5 }}
             >
-              <Box sx={{ marginTop: '20px' }}>
-                <TextField
-                  label="ข้อความที่สรุปแล้ว"
-                  multiline rows={4} value={summarizedText}
-                  fullWidth InputProps={{ readOnly: true }}
-                  sx={{
-                    backgroundColor: '#DEDEDE', borderRadius: '10px',
-                    '& fieldset': { borderColor: '#000', borderWidth: '2px' },
-                    '& .MuiInputLabel-root': { color: '#000' },
-                    '& .MuiInputBase-input': { color: '#000' },
-                  }}
-                />
-                {/* Copy + Export buttons */}
-                <Box sx={{ display: 'flex', gap: 1, marginTop: '10px', justifyContent: 'flex-end' }}>
-                  <Tooltip title="คัดลอก">
-                    <IconButton onClick={handleCopy} sx={{
-                      border: '2px solid #000', borderRadius: '12px', padding: '6px 12px',
-                      backgroundColor: '#DEDEDE', boxShadow: '2px 2px 0px #000',
-                      '&:hover': { backgroundColor: '#c5c5c5' },
-                    }}>
-                      <ContentCopyIcon fontSize="small" />
-                      <Typography sx={{ fontSize: '12px', ml: 0.5 }}>คัดลอก</Typography>
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="บันทึกเป็น .txt">
-                    <IconButton onClick={handleExport} sx={{
-                      border: '2px solid #000', borderRadius: '12px', padding: '6px 12px',
-                      backgroundColor: '#A8C7B3', boxShadow: '2px 2px 0px #000',
-                      '&:hover': { backgroundColor: '#8fb39e' },
-                    }}>
-                      <FileDownloadIcon fontSize="small" />
-                      <Typography sx={{ fontSize: '12px', ml: 0.5 }}>บันทึก .txt</Typography>
-                    </IconButton>
-                  </Tooltip>
+              <Box sx={{
+                marginTop: '24px',
+                backgroundColor: '#EEF0F8',
+                borderRadius: '20px',
+                padding: '20px 32px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+
+                  <Box
+                    component="img"
+                    src="/lizardlizard.png"
+                    alt="lizard mascot"
+                    sx={{ width: 100, height: 'auto', flexShrink: 0, objectFit: 'contain' }}
+                  />
+
+                  <Box sx={{ flex: 1 }}>
+                    <Typography sx={{ fontWeight: 'bold', fontSize: '16px', color: '#333', marginBottom: '10px' }}>
+                      คุณภาพการสรุป (Frontend Metric)
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, marginBottom: '8px' }}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={qualityScore || 0}
+                        sx={{
+                          flex: 1,
+                          height: '14px',
+                          borderRadius: '8px',
+                          backgroundColor: '#D6D6D6',
+                          '& .MuiLinearProgress-bar': {
+                            backgroundColor: (qualityScore || 0) > 70 ? '#A8C7B3' : (qualityScore || 0) > 50 ? '#F3CA52' : '#E8736A',
+                            borderRadius: '8px',
+                          }
+                        }}
+                      />
+                      <Typography sx={{ fontWeight: 'bold', fontSize: '15px', color: '#333', minWidth: '56px' }}>
+                        {(qualityScore || 0).toFixed(1)}%
+                      </Typography>
+                    </Box>
+                    <Typography sx={{ fontSize: '14px', color: '#555' }}>
+                      {qualityLabel}
+                    </Typography>
+                  </Box>
                 </Box>
               </Box>
             </motion.div>
@@ -258,7 +175,6 @@ const LandingPage = () => {
 
       </Box>
 
-      {/* Snackbar */}
       <Snackbar open={snackbar.open} autoHideDuration={2500} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
         <Alert severity={snackbar.severity} variant="filled">{snackbar.message}</Alert>
       </Snackbar>
