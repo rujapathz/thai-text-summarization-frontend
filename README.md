@@ -115,5 +115,5 @@ REACT_APP_API_URL=http://localhost:5000
 
 ## Related Repository
 
-- https://github.com/rujapathz/thai-text-summarization-backend Add backend repo link here
-- https://github.com/SiriMeesuk19796/thai-text-summarization-model Add Model repo link here
+- [Backend](https://github.com/rujapathz/thai-text-summarization-backend)
+- [Model](https://github.com/SiriMeesuk19796/thai-text-summarization-model)
